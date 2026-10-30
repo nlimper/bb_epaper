@@ -4328,6 +4328,13 @@ const uint8_t epd40_init_full[] PROGMEM = {
     5, 0x06, 0x6f, 0x1f, 0x17, 0x27, // BTST2: 2nd setting (longer GDR off before DRF)
     0
 };
+// Spectra 6 (GDEH0154E01) 240x240 6-color init sequence
+// JD7601 controller; all settings and waveforms come from the panel's OTP
+const uint8_t epd154_spectra_init[] PROGMEM = {
+    2, 0xe9, 0x01, // load the OTP settings
+    1, UC8151_PON, // power on (no BUSY_WAIT: BUSY stays low until image data is written)
+    0
+};
 // Spectra 6 (GDEP040E01) 400x600 7-color init sequence
 // GoodDisplay reference; normal (host-managed power cycling) mode
 const uint8_t epd40_init_fast[] PROGMEM = {
@@ -4531,6 +4538,7 @@ const EPD_PANEL panelDefs[] PROGMEM = {
     {480, 800, 0, epd74yr_init_full, NULL, NULL, BBEP_NEEDS_EXTRA_INIT | BBEP_4COLOR, BBEP_CHIP_UC81xx, u8Colors_4clr_v2}, // EP74YR_480x800 Pervasive Displays E2741QS0B3
     {400, 300, 0, lcd42yr_init, NULL, NULL, BBEP_NEEDS_EXTRA_INIT | BBEP_4COLOR | BBEP_SITRONIX, BBEP_CHIP_SSD16xx, u8Colors_4clr_v2}, // EP42YR_400x300_ST7306
     {800, 480, 0, epd426b_init_gray, NULL, NULL, BBEP_4GRAY | BBEP_NEEDS_EXTRA_INIT, BBEP_CHIP_SSD16xx, u8Colors_4gray}, // EP426B_800x480_4GRAY
+    {240, 240, 0, epd154_spectra_init, NULL, NULL, BBEP_7COLOR | BBEP_NEEDS_EXTRA_INIT, BBEP_CHIP_UC81xx, u8Colors_spectra}, // EP154_SPECTRA_240x240 GDEH0154E01
 };
 //
 // Set the e-paper panel type
