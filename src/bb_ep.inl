@@ -1320,9 +1320,15 @@ const uint8_t epd215yr_init_full[] PROGMEM =
     0
 };
 
+// GDEY0579F52: two cascaded IST7158 controllers, 396 columns each
+// 0xa2 selects which one receives PSR and DTM data (0x01 = master, 0x02 = slave, 0x00 = both)
 const uint8_t epd579yr_init_full[] PROGMEM =
 {
-   0x02, 0xe0, 0x01, // OTP
+   0x02, 0xe0, 0x01, // master supplies the clock and temperature to the slave
+   EPD_DELAY, 10,
+   0x01, 0xa5,
+   EPD_DELAY, 10,
+   BUSY_WAIT,
    0x02, 0xa2, 0x01, // master enable
    0x03, 0x00, 0x07, 0x29, // PSR
    0x02, 0xa2, 0x00, // close
@@ -1356,14 +1362,15 @@ const uint8_t epd579yr_init_fast[] PROGMEM =
 {
    0x02, 0xe6, 60, // fast mode
    0x02, 0xe0, 0x03,
-   BUSY_WAIT,
+   EPD_DELAY, 2,
    0x01, 0xa5,
+   EPD_DELAY, 10,
    BUSY_WAIT,
    0x02, 0xa2, 0x01,
    0x03, 0x00, 0x07, 0x29, // PSR
    0x02, 0xa2, 0x00,
    0x02, 0xa2, 0x02,
-   0x03, 0x00, 0x07, 0x29, // PSR for second controller
+   0x03, 0x00, 0x03, 0x29, // PSR for second controller (mirrored source direction)
    0x02, 0xa2, 0x00,
    0x07, 0x01, 0x07, 0x00, 0x26, 0x78, 0x24, 0x26,
    0x04, 0x06, 0xc0, 0xc0, 0xc0,
@@ -4520,7 +4527,6 @@ const EPD_PANEL panelDefs[] PROGMEM = {
     {184, 360, 0, epd266yr_init_full, epd266yr_init_fast, NULL, BBEP_4COLOR, BBEP_CHIP_UC81xx, u8Colors_4clr_v2}, // EP266YR2_184x360
 // 60
     {400, 300, 0, epd42yr_init_full, epd42yr_init_fast, NULL, BBEP_4COLOR, BBEP_CHIP_UC81xx, u8Colors_4clr_v2}, // EP42YR_400x300
-//    {792, 272, 0, epd579yr_init_full, epd579yr_init_fast, NULL, BBEP_4COLOR, BBEP_CHIP_UC81xx, u8Colors_4clr_v2}, // EP579YR_792x272
     {160, 296, 0, epd215yr_init_full, epd215yr_init_full, NULL, BBEP_4COLOR, BBEP_CHIP_UC81xx, u8Colors_4clr_v2}, // EP215YR_160x296
     {680, 480, 0, epd1085_init_full, NULL, NULL, 0, BBEP_CHIP_UC81xx, u8Colors_2clr}, // EP1085_1360x480
     {240, 320, 0, epd31_init_full, epd31_init_fast, epd31_init_part, 0, BBEP_CHIP_UC81xx, u8Colors_2clr}, // EP31_240x320
@@ -4549,6 +4555,7 @@ const EPD_PANEL panelDefs[] PROGMEM = {
     {800, 480, 0, epd426b_init_gray, NULL, NULL, BBEP_4GRAY | BBEP_NEEDS_EXTRA_INIT, BBEP_CHIP_SSD16xx, u8Colors_4gray}, // EP426B_800x480_4GRAY
     {240, 240, 0, epd154_spectra_init, NULL, NULL, BBEP_7COLOR | BBEP_NEEDS_EXTRA_INIT, BBEP_CHIP_UC81xx, u8Colors_spectra}, // EP154_SPECTRA_240x240 GDEH0154E01
     {720, 480, 0, epd37_spectra_init, NULL, NULL, BBEP_7COLOR | BBEP_NEEDS_EXTRA_INIT, BBEP_CHIP_UC81xx, u8Colors_spectra}, // EP37_SPECTRA_720x480 GDEH037E01
+    {792, 272, 0, epd579yr_init_full, epd579yr_init_fast, NULL, BBEP_NEEDS_EXTRA_INIT | BBEP_4COLOR, BBEP_CHIP_UC81xx, u8Colors_4clr_v2}, // EP579YR_792x272 GDEY0579F52
 };
 //
 // Set the e-paper panel type
@@ -5273,7 +5280,7 @@ int bbepRefresh(BBEPDISP *pBBEP, int iMode)
             } else {
                 pBBEP->cs_mode = CMD_CS1;
             }
-            uint8_t u8Temp = (pBBEP->type == EP133_SPECTRA_1200x1600) ? 0x01 : 0x0;
+            uint8_t u8Temp = (pBBEP->type == EP133_SPECTRA_1200x1600 || pBBEP->type == EP579YR_792x272) ? 0x01 : 0x0;
             bbepWriteCmdData(pBBEP, UC8151_DRF, &u8Temp, 1);
         } else {
     //        bbepWriteCmd(pBBEP, UC8151_PTOU); // partial out (update the entire panel, not just the last memory window)
@@ -6113,6 +6120,50 @@ const uint8_t u8Expand[16] = {
 } /* bbepWriteSitronix() */
 
 //
+// Write the image to a 4-color panel with two controllers on one CS (GDEY0579F52, 2x IST7158)
+// 0xA2 selects the controller, each one gets its own half of every row and the
+// gate lines are interleaved: rows h-1, 0, h-2, 1, ... h/2, h/2-1
+// Supports orientation 0 and 180
+//
+static void bbepWriteImage2bppDual(BBEPDISP *pBBEP)
+{
+    int iCtrl, i, x, y;
+    uint8_t uc, *s;
+    const int iHalf = pBBEP->native_width / 8; // bytes per controller row (4 pixels per byte)
+    const int bFlip = (pBBEP->iOrientation == 180);
+    const int b1Bit = (pBBEP->mode == BBEP_MODE_1BPP);
+    const int iPitch = b1Bit ? iHalf : iHalf * 2;
+
+    for (iCtrl = 0; iCtrl < 2; iCtrl++) {
+        bbepCMD2(pBBEP, 0xa2, 1 << iCtrl); // 0x01 = master (left), 0x02 = slave (right)
+        bbepWriteCmd(pBBEP, UC8151_DTM1);
+        for (i = 0; i < pBBEP->native_height; i++) {
+            y = ((i & 1) ^ bFlip) ? (i >> 1) : pBBEP->native_height - 1 - (i >> 1);
+            s = &pBBEP->ucScreen[y * iPitch];
+            if (!b1Bit && !bFlip) { // native layout, send directly
+                bbepWriteData(pBBEP, &s[iCtrl * iHalf], iHalf);
+                continue;
+            }
+            for (x = 0; x < iHalf; x++) {
+                int iByte = bFlip ? (2 - iCtrl) * iHalf - 1 - x : iCtrl * iHalf + x; // 4 pixels
+                if (b1Bit) {
+                    uc = (iByte & 1) ? (s[iByte >> 1] & 0xf) : (s[iByte >> 1] >> 4);
+                    uc = ((uc & 8) << 3) | ((uc & 4) << 2) | ((uc & 2) << 1) | (uc & 1); // 1 = white (01)
+                } else {
+                    uc = s[iByte];
+                }
+                if (bFlip) { // reverse the order of the 4 pixels
+                    uc = (uc >> 6) | ((uc >> 2) & 0x0c) | ((uc << 2) & 0x30) | (uc << 6);
+                }
+                u8Cache[x] = uc;
+            }
+            bbepWriteData(pBBEP, u8Cache, iHalf);
+        } // for i
+    } // for iCtrl
+    bbepCMD2(pBBEP, 0xa2, 0x00); // both controllers again
+} /* bbepWriteImage2bppDual() */
+
+//
 // Write the local copy of the memory plane(s) to the eink's internal framebuffer
 //
 int bbepWritePlane(BBEPDISP *pBBEP, int iPlane, int bInvert)
@@ -6160,7 +6211,9 @@ int bbepWritePlane(BBEPDISP *pBBEP, int iPlane, int bInvert)
         return BBEP_SUCCESS;
     }
     if (pBBEP->iFlags & BBEP_4COLOR) { // 4-color only has 1 way to go
-        if (pBBEP->mode == BBEP_MODE_1BPP) {
+        if (pBBEP->type == EP579YR_792x272) {
+            bbepWriteImage2bppDual(pBBEP);
+        } else if (pBBEP->mode == BBEP_MODE_1BPP) {
             bbepWriteImage1To2bpp(pBBEP, 0x10);
         } else {
             bbepWriteImage2bpp(pBBEP, 0x10);
