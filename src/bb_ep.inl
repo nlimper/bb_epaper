@@ -4335,6 +4335,15 @@ const uint8_t epd154_spectra_init[] PROGMEM = {
     1, UC8151_PON, // power on (no BUSY_WAIT: BUSY stays low until image data is written)
     0
 };
+// GDEH037E01 (IST7601): 65 Hz frame rate instead of the default 50 Hz
+// refresh takes ~35s instead of ~45s, black and colors stay saturated
+const uint8_t epd37_spectra_init[] PROGMEM = {
+    2, 0xe9, 0x01, // load the OTP settings
+    2, UC8151_CDI, 0x37, // border
+    2, UC8151_PLL, 0x03, // 65 Hz frame rate
+    1, UC8151_PON, // power on (no BUSY_WAIT: BUSY stays low until image data is written)
+    0
+};
 // Spectra 6 (GDEP040E01) 400x600 7-color init sequence
 // GoodDisplay reference; normal (host-managed power cycling) mode
 const uint8_t epd40_init_fast[] PROGMEM = {
@@ -4539,6 +4548,7 @@ const EPD_PANEL panelDefs[] PROGMEM = {
     {400, 300, 0, lcd42yr_init, NULL, NULL, BBEP_NEEDS_EXTRA_INIT | BBEP_4COLOR | BBEP_SITRONIX, BBEP_CHIP_SSD16xx, u8Colors_4clr_v2}, // EP42YR_400x300_ST7306
     {800, 480, 0, epd426b_init_gray, NULL, NULL, BBEP_4GRAY | BBEP_NEEDS_EXTRA_INIT, BBEP_CHIP_SSD16xx, u8Colors_4gray}, // EP426B_800x480_4GRAY
     {240, 240, 0, epd154_spectra_init, NULL, NULL, BBEP_7COLOR | BBEP_NEEDS_EXTRA_INIT, BBEP_CHIP_UC81xx, u8Colors_spectra}, // EP154_SPECTRA_240x240 GDEH0154E01
+    {720, 480, 0, epd37_spectra_init, NULL, NULL, BBEP_7COLOR | BBEP_NEEDS_EXTRA_INIT, BBEP_CHIP_UC81xx, u8Colors_spectra}, // EP37_SPECTRA_720x480 GDEH037E01
 };
 //
 // Set the e-paper panel type

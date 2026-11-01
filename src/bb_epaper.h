@@ -304,6 +304,7 @@ enum {
     EP42YR_400x300_ST7306, // Sitronix 4-color reflective LCD
     EP426B_800x480_4GRAY, // TopWin 4.26" B/W 800x480
     EP154_SPECTRA_240x240, // GDEH0154E01 Spectra 6 1.54" 240x240
+    EP37_SPECTRA_720x480, // GDEH037E01 Spectra 6 3.7" 720x480
     EP_PANEL_COUNT
 };
 #ifdef FUTURE
